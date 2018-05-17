@@ -13,6 +13,8 @@
 # limitations under the License.
 """A setuptools based setup module for magenta."""
 
+import sys
+
 from setuptools import find_packages
 from setuptools import setup
 
@@ -20,25 +22,36 @@ from setuptools import setup
 # executing __init__.py, which will end up requiring a bunch of dependencies to
 # execute (e.g., tensorflow, pretty_midi, etc.).
 # Makes the __version__ variable available.
-execfile('magenta/version.py')
+with open('magenta/version.py') as in_file:
+  exec(in_file.read())  # pylint: disable=exec-used
 
+if '--gpu' in sys.argv:
+  gpu_mode = True
+  sys.argv.remove('--gpu')
+else:
+  gpu_mode = False
 
 REQUIRED_PACKAGES = [
     'IPython',
     'Pillow >= 3.4.2',
     'bokeh >= 0.12.0',
-    'futures',
     'intervaltree >= 2.1.0',
+    'librosa >= 0.6.0',
     'matplotlib >= 1.5.3',
     'mido == 1.2.6',
+    'mir_eval >= 0.4',
     'numpy >= 1.11.0',
     'pandas >= 0.18.1',
     'pretty_midi >= 0.2.6',
     'python-rtmidi',
     'scipy >= 0.18.1',
-    'tensorflow >= 1.1.0',
     'wheel',
 ]
+
+if gpu_mode:
+  REQUIRED_PACKAGES.append('tensorflow-gpu >= 1.4.0')
+else:
+  REQUIRED_PACKAGES.append('tensorflow >= 1.4.0')
 
 CONSOLE_SCRIPTS = [
     'magenta.interfaces.midi.magenta_midi',
@@ -57,8 +70,15 @@ CONSOLE_SCRIPTS = [
     'magenta.models.melody_rnn.melody_rnn_create_dataset',
     'magenta.models.melody_rnn.melody_rnn_generate',
     'magenta.models.melody_rnn.melody_rnn_train',
+    'magenta.models.music_vae.music_vae_train',
     'magenta.models.nsynth.wavenet.nsynth_generate',
     'magenta.models.nsynth.wavenet.nsynth_save_embeddings',
+    'magenta.models.onsets_frames_transcription.'
+    'onsets_frames_transcription_create_dataset',
+    'magenta.models.onsets_frames_transcription.'
+    'onsets_frames_transcription_infer',
+    'magenta.models.onsets_frames_transcription.'
+    'onsets_frames_transcription_train',
     'magenta.models.performance_rnn.performance_rnn_create_dataset',
     'magenta.models.performance_rnn.performance_rnn_generate',
     'magenta.models.performance_rnn.performance_rnn_train',
@@ -74,7 +94,7 @@ CONSOLE_SCRIPTS = [
 ]
 
 setup(
-    name='magenta',
+    name='magenta-gpu' if gpu_mode else 'magenta',
     version=__version__,  # pylint: disable=undefined-variable
     description='Use machine learning to create art and music',
     long_description='',
@@ -90,6 +110,7 @@ setup(
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: Apache Software License',
         'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3',
         'Topic :: Scientific/Engineering :: Mathematics',
         'Topic :: Software Development :: Libraries :: Python Modules',
         'Topic :: Software Development :: Libraries',
@@ -98,6 +119,7 @@ setup(
 
     packages=find_packages(),
     install_requires=REQUIRED_PACKAGES,
+    extras_require={':python_version == "2.7"': ['futures']},
     entry_points={
         'console_scripts': ['%s = %s:console_entry_point' % (n, p) for n, p in
                             ((s.split('.')[-1], s) for s in CONSOLE_SCRIPTS)],

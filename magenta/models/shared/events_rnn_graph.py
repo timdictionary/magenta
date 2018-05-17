@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 # internal imports
+import numpy as np
 import six
 import tensorflow as tf
 import magenta
@@ -58,8 +59,8 @@ def make_rnn_cell(rnn_layer_sizes,
   return cell
 
 
-def build_graph(mode, config, sequence_example_file_paths=None):
-  """Builds the TensorFlow graph.
+def get_build_graph_fn(mode, config, sequence_example_file_paths=None):
+  """Returns a function that builds the TensorFlow graph.
 
   Args:
     mode: 'train', 'eval', or 'generate'. Only mode related ops are added to
@@ -71,7 +72,7 @@ def build_graph(mode, config, sequence_example_file_paths=None):
         evaluation.
 
   Returns:
-    A tf.Graph instance which contains the TF ops.
+    A function that builds the TF ops when called.
 
   Raises:
     ValueError: If mode is not 'train', 'eval', or 'generate'.
@@ -89,7 +90,8 @@ def build_graph(mode, config, sequence_example_file_paths=None):
   num_classes = encoder_decoder.num_classes
   no_event_label = encoder_decoder.default_event_label
 
-  with tf.Graph().as_default() as graph:
+  def build():
+    """Builds the Tensorflow graph."""
     inputs, labels, lengths = None, None, None
 
     if mode == 'train' or mode == 'eval':
@@ -131,9 +133,20 @@ def build_graph(mode, config, sequence_example_file_paths=None):
       event_positions = tf.to_float(tf.not_equal(labels_flat, no_event_label))
       no_event_positions = tf.to_float(tf.equal(labels_flat, no_event_label))
 
+      # Compute the total number of time steps across all sequences in the
+      # batch. For some models this will be different from the number of RNN
+      # steps.
+      def batch_labels_to_num_steps(batch_labels, lengths):
+        num_steps = 0
+        for labels, length in zip(batch_labels, lengths):
+          num_steps += encoder_decoder.labels_to_num_steps(labels[:length])
+        return np.float32(num_steps)
+      num_steps = tf.py_func(
+          batch_labels_to_num_steps, [labels, lengths], tf.float32)
+
       if mode == 'train':
         loss = tf.reduce_mean(softmax_cross_entropy)
-        perplexity = tf.reduce_mean(tf.exp(softmax_cross_entropy))
+        perplexity = tf.exp(loss)
         accuracy = tf.reduce_mean(correct_predictions)
         event_accuracy = (
             tf.reduce_sum(correct_predictions * event_positions) /
@@ -141,6 +154,9 @@ def build_graph(mode, config, sequence_example_file_paths=None):
         no_event_accuracy = (
             tf.reduce_sum(correct_predictions * no_event_positions) /
             tf.reduce_sum(no_event_positions))
+
+        loss_per_step = tf.reduce_sum(softmax_cross_entropy) / num_steps
+        perplexity_per_step = tf.exp(loss_per_step)
 
         optimizer = tf.train.AdamOptimizer(learning_rate=hparams.learning_rate)
 
@@ -154,6 +170,8 @@ def build_graph(mode, config, sequence_example_file_paths=None):
             'metrics/accuracy': accuracy,
             'metrics/event_accuracy': event_accuracy,
             'metrics/no_event_accuracy': no_event_accuracy,
+            'metrics/loss_per_step': loss_per_step,
+            'metrics/perplexity_per_step': perplexity_per_step,
         }
       elif mode == 'eval':
         vars_to_summarize, update_ops = tf.contrib.metrics.aggregate_metric_map(
@@ -168,11 +186,18 @@ def build_graph(mode, config, sequence_example_file_paths=None):
                     event_positions, correct_predictions),
                 'metrics/no_event_accuracy': tf.metrics.recall(
                     no_event_positions, correct_predictions),
-                'metrics/perplexity': tf.metrics.mean(
-                    tf.exp(softmax_cross_entropy)),
+                'metrics/loss_per_step': tf.metrics.mean(
+                    tf.reduce_sum(softmax_cross_entropy) / num_steps,
+                    weights=num_steps),
             })
         for updates_op in update_ops.values():
           tf.add_to_collection('eval_ops', updates_op)
+
+        # Perplexity is just exp(loss) and doesn't need its own update op.
+        vars_to_summarize['metrics/perplexity'] = tf.exp(
+            vars_to_summarize['loss'])
+        vars_to_summarize['metrics/perplexity_per_step'] = tf.exp(
+            vars_to_summarize['metrics/loss_per_step'])
 
       for var_name, var_value in six.iteritems(vars_to_summarize):
         tf.summary.scalar(var_name, var_value)
@@ -193,4 +218,4 @@ def build_graph(mode, config, sequence_example_file_paths=None):
       for state in tf_nest.flatten(final_state):
         tf.add_to_collection('final_state', state)
 
-  return graph
+  return build

@@ -5,9 +5,23 @@ set -e
 # Display commands being run.
 set -x
 
-sudo pip install tensorflow scipy matplotlib intervaltree bokeh IPython
+# TODO(iansimon): Unrestrict tornado version and figure out how to upgrade to
+# python 2.7.9 in kokoro.
+eval "${PIP_COMMAND} install --upgrade \
+  'tornado<5.0' \
+  IPython \
+  bokeh \
+  intervaltree \
+  librosa \
+  matplotlib \
+  mir_eval \
+  scipy \
+  tensorflow \
+  "
 
 bazel test \
   --keep_going \
-  --test_output=errors -- \
+  --test_output=errors \
+  ${BAZEL_TEST_ARGS} \
+  -- \
   //magenta/...

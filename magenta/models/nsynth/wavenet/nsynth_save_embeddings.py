@@ -18,6 +18,7 @@ import sys
 
 # internal imports
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from magenta.models.nsynth import utils
@@ -115,7 +116,7 @@ def main(unused_argv=None):
 
         if num + batch_filler + 1 == batch_size:
           break
-    except Exception, e:
+    except Exception as e:
       tf.logging.info("Unexpected error happened: %s.", e)
       raise
 

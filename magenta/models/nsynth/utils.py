@@ -23,6 +23,7 @@ import os
 # internal imports
 import librosa
 import numpy as np
+from six.moves import range  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 slim = tf.contrib.slim
@@ -228,8 +229,8 @@ def specgram(audio,
 
     # Magnitudes, scaled 0-1
     if log_mag:
-      mag = (librosa.logamplitude(
-          mag**2, amin=1e-13, top_db=120., ref_power=np.max) / 120.) + 1
+      mag = (librosa.power_to_db(
+          mag**2, amin=1e-13, top_db=120., ref=np.max) / 120.) + 1
     else:
       mag /= mag.max()
 
@@ -275,7 +276,7 @@ def griffin_lim(mag, phase_angle, n_fft, hop, num_iters):
   fft_config = dict(n_fft=n_fft, win_length=n_fft, hop_length=hop, center=True)
   ifft_config = dict(win_length=n_fft, hop_length=hop, center=True)
   complex_specgram = inv_magphase(mag, phase_angle)
-  for i in xrange(num_iters):
+  for i in range(num_iters):
     audio = librosa.istft(complex_specgram, **ifft_config)
     if i != num_iters - 1:
       complex_specgram = librosa.stft(audio, **fft_config)

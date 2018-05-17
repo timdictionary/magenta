@@ -14,6 +14,12 @@
 
 """Imports objects from music modules into the top-level music namespace."""
 
+from magenta.music.abc_parser import parse_abc_tunebook
+from magenta.music.abc_parser import parse_abc_tunebook_file
+
+from magenta.music.chord_inference import ChordInferenceException
+from magenta.music.chord_inference import infer_chords_for_sequence
+
 from magenta.music.chord_symbols_lib import chord_symbol_bass
 from magenta.music.chord_symbols_lib import chord_symbol_pitches
 from magenta.music.chord_symbols_lib import chord_symbol_quality
@@ -47,6 +53,7 @@ from magenta.music.encoder_decoder import LookbackEventSequenceEncoderDecoder
 from magenta.music.encoder_decoder import MultipleEventSequenceEncoder
 from magenta.music.encoder_decoder import OneHotEncoding
 from magenta.music.encoder_decoder import OneHotEventSequenceEncoderDecoder
+from magenta.music.encoder_decoder import OptionalEventSequenceEncoder
 
 from magenta.music.events_lib import NonIntegerStepsPerBarException
 
@@ -83,6 +90,16 @@ from magenta.music.musicxml_reader import MusicXMLConversionError
 from magenta.music.notebook_utils import play_sequence
 from magenta.music.notebook_utils import plot_sequence
 
+from magenta.music.performance_controls import all_performance_control_signals
+from magenta.music.performance_controls import NoteDensityPerformanceControlSignal
+from magenta.music.performance_controls import PitchHistogramPerformanceControlSignal
+
+from magenta.music.performance_encoder_decoder import PerformanceOneHotEncoding
+
+from magenta.music.performance_lib import extract_performances
+from magenta.music.performance_lib import MetricPerformance
+from magenta.music.performance_lib import Performance
+
 from magenta.music.pianoroll_encoder_decoder import PianorollEncoderDecoder
 
 from magenta.music.pianoroll_lib import extract_pianoroll_sequences
@@ -98,7 +115,7 @@ from magenta.music.sequence_generator_bundle import read_bundle_file
 from magenta.music.sequences_lib import apply_sustain_control_changes
 from magenta.music.sequences_lib import BadTimeSignatureException
 from magenta.music.sequences_lib import extract_subsequence
-from magenta.music.sequences_lib import infer_chords_for_sequence
+from magenta.music.sequences_lib import infer_dense_chords_for_sequence
 from magenta.music.sequences_lib import MultipleTempoException
 from magenta.music.sequences_lib import MultipleTimeSignatureException
 from magenta.music.sequences_lib import NegativeTimeException

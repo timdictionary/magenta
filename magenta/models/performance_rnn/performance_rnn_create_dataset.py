@@ -24,8 +24,8 @@ import os
 # internal imports
 
 import tensorflow as tf
+import magenta
 
-from magenta.models.performance_rnn import performance_lib
 from magenta.models.performance_rnn import performance_model
 
 from magenta.pipelines import dag_pipeline
@@ -62,38 +62,34 @@ class EncoderPipeline(pipeline.Pipeline):
       name: A unique pipeline name.
     """
     super(EncoderPipeline, self).__init__(
-        input_type=performance_lib.Performance,
+        input_type=magenta.music.Performance,
         output_type=tf.train.SequenceExample,
         name=name)
     self._encoder_decoder = config.encoder_decoder
-    self._density_bin_ranges = config.density_bin_ranges
-    self._density_window_size = config.density_window_size
-    self._pitch_histogram_window_size = config.pitch_histogram_window_size
+    self._control_signals = config.control_signals
+    self._optional_conditioning = config.optional_conditioning
 
   def transform(self, performance):
-    if (self._density_bin_ranges is not None and
-        self._pitch_histogram_window_size is not None):
-      # Encode conditional on note density and pitch class histogram.
-      density_sequence = performance_lib.performance_note_density_sequence(
-          performance, self._density_window_size)
-      histogram_sequence = performance_lib.performance_pitch_histogram_sequence(
-          performance, self._pitch_histogram_window_size)
-      encoded = self._encoder_decoder.encode(
-          zip(density_sequence, histogram_sequence), performance)
-    elif self._density_bin_ranges is not None:
-      # Encode conditional on note density.
-      density_sequence = performance_lib.performance_note_density_sequence(
-          performance, self._density_window_size)
-      encoded = self._encoder_decoder.encode(density_sequence, performance)
-    elif self._pitch_histogram_window_size is not None:
-      # Encode conditional on pitch class histogram.
-      histogram_sequence = performance_lib.performance_pitch_histogram_sequence(
-          performance, self._pitch_histogram_window_size)
-      encoded = self._encoder_decoder.encode(histogram_sequence, performance)
+    if self._control_signals:
+      # Encode conditional on control signals.
+      control_sequences = []
+      for control in self._control_signals:
+        control_sequences.append(control.extract(performance))
+      control_sequence = zip(*control_sequences)
+      if self._optional_conditioning:
+        # Create two copies, one with and one without conditioning.
+        encoded = [
+            self._encoder_decoder.encode(
+                zip([disable] * len(control_sequence), control_sequence),
+                performance)
+            for disable in [False, True]]
+      else:
+        encoded = [self._encoder_decoder.encode(
+            control_sequence, performance)]
     else:
       # Encode unconditional.
-      encoded = self._encoder_decoder.encode(performance)
-    return [encoded]
+      encoded = [self._encoder_decoder.encode(performance)]
+    return encoded
 
 
 class PerformanceExtractor(pipeline.Pipeline):
@@ -102,14 +98,14 @@ class PerformanceExtractor(pipeline.Pipeline):
   def __init__(self, min_events, max_events, num_velocity_bins, name=None):
     super(PerformanceExtractor, self).__init__(
         input_type=music_pb2.NoteSequence,
-        output_type=performance_lib.Performance,
+        output_type=magenta.music.Performance,
         name=name)
     self._min_events = min_events
     self._max_events = max_events
     self._num_velocity_bins = num_velocity_bins
 
   def transform(self, quantized_sequence):
-    performances, stats = performance_lib.extract_performances(
+    performances, stats = magenta.music.extract_performances(
         quantized_sequence,
         min_events_discard=self._min_events,
         max_events_truncate=self._max_events,
@@ -146,13 +142,15 @@ def get_pipeline(config, min_events, max_events, eval_ratio):
     sustain_pipeline = note_sequence_pipelines.SustainPipeline(
         name='SustainPipeline_' + mode)
     stretch_pipeline = note_sequence_pipelines.StretchPipeline(
-        stretch_factors, name='StretchPipeline_' + mode)
+        stretch_factors if mode == 'training' else [1.0],
+        name='StretchPipeline_' + mode)
     splitter = note_sequence_pipelines.Splitter(
         hop_size_seconds=30.0, name='Splitter_' + mode)
     quantizer = note_sequence_pipelines.Quantizer(
         steps_per_second=config.steps_per_second, name='Quantizer_' + mode)
     transposition_pipeline = note_sequence_pipelines.TranspositionPipeline(
-        transposition_range, name='TranspositionPipeline_' + mode)
+        transposition_range if mode == 'training' else [0],
+        name='TranspositionPipeline_' + mode)
     perf_extractor = PerformanceExtractor(
         min_events=min_events, max_events=max_events,
         num_velocity_bins=config.num_velocity_bins,

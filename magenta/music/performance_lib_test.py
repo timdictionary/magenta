@@ -16,7 +16,7 @@
 # internal imports
 import tensorflow as tf
 
-from magenta.models.performance_rnn import performance_lib
+from magenta.music import performance_lib
 from magenta.music import sequences_lib
 from magenta.music import testing_lib
 from magenta.protobuf import music_pb2
@@ -36,7 +36,9 @@ class PerformanceLibTest(tf.test.TestCase):
         [(60, 100, 0.0, 4.0), (64, 100, 0.0, 3.0), (67, 100, 1.0, 2.0)])
     quantized_sequence = sequences_lib.quantize_note_sequence_absolute(
         self.note_sequence, steps_per_second=100)
-    performance = list(performance_lib.Performance(quantized_sequence))
+    performance = performance_lib.Performance(quantized_sequence)
+
+    self.assertEqual(100, performance.steps_per_second)
 
     pe = performance_lib.PerformanceEvent
     expected_performance = [
@@ -51,7 +53,7 @@ class PerformanceLibTest(tf.test.TestCase):
         pe(pe.TIME_SHIFT, 100),
         pe(pe.NOTE_OFF, 60),
     ]
-    self.assertEqual(expected_performance, performance)
+    self.assertEqual(expected_performance, list(performance))
 
   def testFromQuantizedNoteSequenceWithVelocity(self):
     testing_lib.add_track_to_sequence(
@@ -104,6 +106,62 @@ class PerformanceLibTest(tf.test.TestCase):
         pe(pe.NOTE_OFF, 60),
     ]
     self.assertEqual(expected_performance, performance)
+
+  def testFromRelativeQuantizedNoteSequence(self):
+    self.note_sequence.tempos.add(qpm=60.0)
+    testing_lib.add_track_to_sequence(
+        self.note_sequence, 0,
+        [(60, 100, 0.0, 4.0), (64, 100, 0.0, 3.0), (67, 100, 1.0, 2.0)])
+    quantized_sequence = sequences_lib.quantize_note_sequence(
+        self.note_sequence, steps_per_quarter=100)
+    performance = performance_lib.MetricPerformance(quantized_sequence)
+
+    self.assertEqual(100, performance.steps_per_quarter)
+
+    pe = performance_lib.PerformanceEvent
+    expected_performance = [
+        pe(pe.NOTE_ON, 60),
+        pe(pe.NOTE_ON, 64),
+        pe(pe.TIME_SHIFT, 100),
+        pe(pe.NOTE_ON, 67),
+        pe(pe.TIME_SHIFT, 100),
+        pe(pe.NOTE_OFF, 67),
+        pe(pe.TIME_SHIFT, 100),
+        pe(pe.NOTE_OFF, 64),
+        pe(pe.TIME_SHIFT, 100),
+        pe(pe.NOTE_OFF, 60),
+    ]
+    self.assertEqual(expected_performance, list(performance))
+
+  def testProgramAndIsDrumFromQuantizedNoteSequence(self):
+    testing_lib.add_track_to_sequence(
+        self.note_sequence, 0,
+        [(60, 100, 0.0, 4.0), (64, 100, 0.0, 3.0), (67, 100, 1.0, 2.0)],
+        program=1)
+    testing_lib.add_track_to_sequence(
+        self.note_sequence, 1, [(36, 100, 0.0, 4.0), (48, 100, 0.0, 4.0)],
+        program=2)
+    testing_lib.add_track_to_sequence(
+        self.note_sequence, 2, [(57, 100, 0.0, 0.1)],
+        is_drum=True)
+    quantized_sequence = sequences_lib.quantize_note_sequence_absolute(
+        self.note_sequence, steps_per_second=100)
+
+    performance = performance_lib.Performance(quantized_sequence, instrument=0)
+    self.assertEqual(1, performance.program)
+    self.assertFalse(performance.is_drum)
+
+    performance = performance_lib.Performance(quantized_sequence, instrument=1)
+    self.assertEqual(2, performance.program)
+    self.assertFalse(performance.is_drum)
+
+    performance = performance_lib.Performance(quantized_sequence, instrument=2)
+    self.assertIsNone(performance.program)
+    self.assertTrue(performance.is_drum)
+
+    performance = performance_lib.Performance(quantized_sequence)
+    self.assertIsNone(performance.program)
+    self.assertIsNone(performance.is_drum)
 
   def testToSequence(self):
     testing_lib.add_track_to_sequence(
@@ -213,11 +271,28 @@ class PerformanceLibTest(tf.test.TestCase):
 
     self.assertEqual(self.note_sequence, performance_ns)
 
+  def testToSequenceRelativeQuantized(self):
+    self.note_sequence.tempos.add(qpm=60.0)
+    testing_lib.add_track_to_sequence(
+        self.note_sequence, 0,
+        [(60, 100, 0.0, 4.0), (64, 100, 0.0, 3.0), (67, 100, 1.0, 2.0)])
+    quantized_sequence = sequences_lib.quantize_note_sequence(
+        self.note_sequence, steps_per_quarter=100)
+    performance = performance_lib.MetricPerformance(quantized_sequence)
+    performance_ns = performance.to_sequence(qpm=60.0)
+
+    # Make comparison easier by sorting.
+    performance_ns.notes.sort(key=lambda n: (n.start_time, n.pitch))
+    self.note_sequence.notes.sort(key=lambda n: (n.start_time, n.pitch))
+
+    self.assertEqual(self.note_sequence, performance_ns)
+
   def testSetLengthAddSteps(self):
     performance = performance_lib.Performance(steps_per_second=100)
 
     performance.set_length(50)
     self.assertEqual(50, performance.num_steps)
+    self.assertListEqual([0], performance.steps)
 
     pe = performance_lib.PerformanceEvent
     perf_events = [pe(pe.TIME_SHIFT, 50)]
@@ -225,6 +300,7 @@ class PerformanceLibTest(tf.test.TestCase):
 
     performance.set_length(150)
     self.assertEqual(150, performance.num_steps)
+    self.assertListEqual([0, 100], performance.steps)
 
     pe = performance_lib.PerformanceEvent
     perf_events = [
@@ -235,6 +311,7 @@ class PerformanceLibTest(tf.test.TestCase):
 
     performance.set_length(200)
     self.assertEqual(200, performance.num_steps)
+    self.assertListEqual([0, 100], performance.steps)
 
     pe = performance_lib.PerformanceEvent
     perf_events = [
@@ -295,73 +372,28 @@ class PerformanceLibTest(tf.test.TestCase):
       performance.append(event)
 
     self.assertEqual(100, performance.num_steps)
+    self.assertListEqual([0, 0, 0, 100, 100], performance.steps)
 
-  def testPerformanceNoteDensitySequence(self):
-    performance = performance_lib.Performance(steps_per_second=100)
-
+  def testSteps(self):
     pe = performance_lib.PerformanceEvent
     perf_events = [
         pe(pe.NOTE_ON, 60),
         pe(pe.NOTE_ON, 64),
-        pe(pe.NOTE_ON, 67),
-        pe(pe.TIME_SHIFT, 50),
+        pe(pe.TIME_SHIFT, 100),
         pe(pe.NOTE_OFF, 60),
         pe(pe.NOTE_OFF, 64),
-        pe(pe.TIME_SHIFT, 25),
-        pe(pe.NOTE_OFF, 67),
-        pe(pe.NOTE_ON, 64),
-        pe(pe.TIME_SHIFT, 25),
-        pe(pe.NOTE_OFF, 64)
     ]
-    for event in perf_events:
-      performance.append(event)
 
-    expected_density_sequence = [
-        4.0, 4.0, 4.0, 4.0, 2.0, 2.0, 2.0, 4.0, 4.0, 4.0, 0.0]
-
-    density_sequence = performance_lib.performance_note_density_sequence(
-        performance, window_size_seconds=1.0)
-
-    self.assertEqual(expected_density_sequence, density_sequence)
-
-  def testPerformancePitchHistogramSequence(self):
     performance = performance_lib.Performance(steps_per_second=100)
-
-    pe = performance_lib.PerformanceEvent
-    perf_events = [
-        pe(pe.NOTE_ON, 60),
-        pe(pe.NOTE_ON, 64),
-        pe(pe.NOTE_ON, 67),
-        pe(pe.TIME_SHIFT, 50),
-        pe(pe.NOTE_OFF, 60),
-        pe(pe.NOTE_OFF, 64),
-        pe(pe.TIME_SHIFT, 25),
-        pe(pe.NOTE_OFF, 67),
-        pe(pe.NOTE_ON, 64),
-        pe(pe.TIME_SHIFT, 25),
-        pe(pe.NOTE_OFF, 64)
-    ]
     for event in perf_events:
       performance.append(event)
+    self.assertListEqual([0, 0, 0, 100, 100], performance.steps)
 
-    expected_histogram_sequence = [
-        [0.25, 0, 0, 0, 0.375, 0, 0, 0.375, 0, 0, 0, 0],
-        [0.25, 0, 0, 0, 0.375, 0, 0, 0.375, 0, 0, 0, 0],
-        [0.25, 0, 0, 0, 0.375, 0, 0, 0.375, 0, 0, 0, 0],
-        [0.25, 0, 0, 0, 0.375, 0, 0, 0.375, 0, 0, 0, 0],
-        [0.0, 0, 0, 0, 0.5, 0, 0, 0.5, 0, 0, 0, 0],
-        [0.0, 0, 0, 0, 0.5, 0, 0, 0.5, 0, 0, 0, 0],
-        [0.0, 0, 0, 0, 0.5, 0, 0, 0.5, 0, 0, 0, 0],
-        [0.0, 0, 0, 0, 1.0, 0, 0, 0.0, 0, 0, 0, 0],
-        [0.0, 0, 0, 0, 1.0, 0, 0, 0.0, 0, 0, 0, 0],
-        [0.0, 0, 0, 0, 1.0, 0, 0, 0.0, 0, 0, 0, 0],
-        [1.0 / 12.0] * 12
-    ]
-
-    histogram_sequence = performance_lib.performance_pitch_histogram_sequence(
-        performance, window_size_seconds=1.0, prior_count=0)
-
-    self.assertEqual(expected_histogram_sequence, histogram_sequence)
+    performance = performance_lib.Performance(
+        steps_per_second=100, start_step=100)
+    for event in perf_events:
+      performance.append(event)
+    self.assertListEqual([100, 100, 100, 200, 200], performance.steps)
 
   def testExtractPerformances(self):
     testing_lib.add_track_to_sequence(
@@ -385,6 +417,11 @@ class PerformanceLibTest(tf.test.TestCase):
     self.assertEqual(1, len(perfs))
     self.assertEqual(3, len(perfs[0]))
 
+    perfs, _ = performance_lib.extract_performances(
+        quantized_sequence, max_steps_truncate=100)
+    self.assertEqual(1, len(perfs))
+    self.assertEqual(100, perfs[0].num_steps)
+
   def testExtractPerformancesMultiProgram(self):
     testing_lib.add_track_to_sequence(
         self.note_sequence, 0,
@@ -396,7 +433,7 @@ class PerformanceLibTest(tf.test.TestCase):
     perfs, _ = performance_lib.extract_performances(quantized_sequence)
     self.assertEqual(0, len(perfs))
 
-  def testExtractNonZeroStart(self):
+  def testExtractPerformancesNonZeroStart(self):
     testing_lib.add_track_to_sequence(
         self.note_sequence, 0, [(60, 100, 0.0, 4.0)])
     quantized_sequence = sequences_lib.quantize_note_sequence_absolute(
@@ -408,6 +445,54 @@ class PerformanceLibTest(tf.test.TestCase):
     perfs, _ = performance_lib.extract_performances(
         quantized_sequence, start_step=0, min_events_discard=1)
     self.assertEqual(1, len(perfs))
+
+  def testExtractPerformancesRelativeQuantized(self):
+    self.note_sequence.tempos.add(qpm=60.0)
+    testing_lib.add_track_to_sequence(
+        self.note_sequence, 0, [(60, 100, 0.0, 4.0)])
+    quantized_sequence = sequences_lib.quantize_note_sequence(
+        self.note_sequence, steps_per_quarter=100)
+
+    perfs, _ = performance_lib.extract_performances(quantized_sequence)
+    self.assertEqual(1, len(perfs))
+
+    perfs, _ = performance_lib.extract_performances(
+        quantized_sequence, min_events_discard=1, max_events_truncate=10)
+    self.assertEqual(1, len(perfs))
+
+    perfs, _ = performance_lib.extract_performances(
+        quantized_sequence, min_events_discard=8, max_events_truncate=10)
+    self.assertEqual(0, len(perfs))
+
+    perfs, _ = performance_lib.extract_performances(
+        quantized_sequence, min_events_discard=1, max_events_truncate=3)
+    self.assertEqual(1, len(perfs))
+    self.assertEqual(3, len(perfs[0]))
+
+    perfs, _ = performance_lib.extract_performances(
+        quantized_sequence, max_steps_truncate=100)
+    self.assertEqual(1, len(perfs))
+    self.assertEqual(100, perfs[0].num_steps)
+
+  def testExtractPerformancesSplitInstruments(self):
+    testing_lib.add_track_to_sequence(
+        self.note_sequence, 0, [(60, 100, 0.0, 4.0)])
+    testing_lib.add_track_to_sequence(
+        self.note_sequence, 1, [(62, 100, 0.0, 2.0), (64, 100, 2.0, 4.0)])
+    quantized_sequence = sequences_lib.quantize_note_sequence_absolute(
+        self.note_sequence, steps_per_second=100)
+
+    perfs, _ = performance_lib.extract_performances(
+        quantized_sequence, split_instruments=True)
+    self.assertEqual(2, len(perfs))
+
+    perfs, _ = performance_lib.extract_performances(
+        quantized_sequence, min_events_discard=8, split_instruments=True)
+    self.assertEqual(1, len(perfs))
+
+    perfs, _ = performance_lib.extract_performances(
+        quantized_sequence, min_events_discard=16, split_instruments=True)
+    self.assertEqual(0, len(perfs))
 
 
 if __name__ == '__main__':

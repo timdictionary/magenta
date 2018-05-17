@@ -13,14 +13,20 @@ Because of this representation, the model is capable of generating performances 
 
 At generation time, a few undesired behaviors can occur: note-off events with no previous note-on (these are ignored), and note-on events with no subsequent note-off (these are ended after 5 seconds).
 
+## Web Interface
+
+You can run Performance RNN live in your browser at the [Performance RNN browser demo](https://deeplearnjs.org/demos/performance_rnn), made with [deeplearn.js](https://deeplearnjs.org). More details about the web port can be found at our blog post: [Real-time Performance RNN in the Browser](https://magenta.tensorflow.org/performance-rnn-browser).
+
+## Colab and Jupyter notebooks
+
+You can try out Performance RNN in the [Colab](https://colab.research.google.com) environment with the [performance_rnn.ipynb](https://colab.research.google.com/notebook#fileId=/v2/external/notebooks/magenta/performance_rnn/performance_rnn.ipynb) notebook.
+
+There is also a Jupyter notebook [Performance_RNN.ipynb](https://github.com/tensorflow/magenta-demos/blob/master/jupyter-notebooks/Performance_RNN.ipynb)
+in our [Magenta Demos](https://github.com/tensorflow/magenta-demos) repository showing how to generate performances from a trained model.
+
 ## How to Use
 
-First, set up your [Magenta environment](/README.md). Next, you can either use a pre-trained model or train your own.
-
-## Jupyter notebook
-
-There is a Jupyter notebook [Performance_RNN.ipynb](https://github.com/tensorflow/magenta-demos/blob/master/jupyter-notebooks/Performance_RNN.ipynb)
-in our [Magenta Demos](https://github.com/tensorflow/magenta-demos) repository showing how to generate performances from a trained model.
+If you would like to run the model locally, first, set up your [Magenta environment](/README.md). Next, you can either use a pre-trained model or train your own.
 
 ## Pre-trained
 
@@ -29,8 +35,8 @@ If you want to get started right away, you can use a few models that we've pre-t
 * [performance](http://download.magenta.tensorflow.org/models/performance.mag)
 * [performance_with_dynamics](http://download.magenta.tensorflow.org/models/performance_with_dynamics.mag)
 * [density_conditioned_performance_with_dynamics](http://download.magenta.tensorflow.org/models/density_conditioned_performance_with_dynamics.mag)
-* [pitch_conditioned_performance_with_dynamics](http://download.magenta.tensorflow.org/models/performance_with_dynamics.mag)
-* [multiconditioned_performance_with_dynamics](http://download.magenta.tensorflow.org/models/performance_with_dynamics.mag)
+* [pitch_conditioned_performance_with_dynamics](http://download.magenta.tensorflow.org/models/pitch_conditioned_performance_with_dynamics.mag)
+* [multiconditioned_performance_with_dynamics](http://download.magenta.tensorflow.org/models/multiconditioned_performance_with_dynamics.mag)
 
 The latter three models are *conditional* models that can generate performances conditioned on desired note density, desired pitch class distribution, or both, respectively.
 

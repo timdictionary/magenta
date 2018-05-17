@@ -17,8 +17,8 @@
 
 import tensorflow as tf
 
-from magenta.models.performance_rnn import performance_encoder_decoder
-from magenta.models.performance_rnn.performance_lib import PerformanceEvent
+from magenta.music import performance_encoder_decoder
+from magenta.music.performance_lib import PerformanceEvent
 
 
 class PerformanceOneHotEncodingTest(tf.test.TestCase):
@@ -61,24 +61,23 @@ class PerformanceOneHotEncodingTest(tf.test.TestCase):
       event = self.enc.decode_event(expected_index)
       self.assertEqual(expected_event, event)
 
+  def testEventToNumSteps(self):
+    self.assertEqual(0, self.enc.event_to_num_steps(
+        PerformanceEvent(event_type=PerformanceEvent.NOTE_ON, event_value=60)))
+    self.assertEqual(0, self.enc.event_to_num_steps(
+        PerformanceEvent(event_type=PerformanceEvent.NOTE_OFF, event_value=67)))
+    self.assertEqual(0, self.enc.event_to_num_steps(
+        PerformanceEvent(event_type=PerformanceEvent.VELOCITY, event_value=10)))
 
-class NoteDensityOneHotEncodingTest(tf.test.TestCase):
-
-  def setUp(self):
-    self.enc = performance_encoder_decoder.NoteDensityOneHotEncoding(
-        density_bin_ranges=[1.0, 5.0])
-
-  def testEncodeDecode(self):
-    self.assertEqual(0, self.enc.encode_event(0.0))
-    self.assertEqual(0, self.enc.encode_event(0.5))
-    self.assertEqual(1, self.enc.encode_event(1.0))
-    self.assertEqual(1, self.enc.encode_event(2.0))
-    self.assertEqual(2, self.enc.encode_event(5.0))
-    self.assertEqual(2, self.enc.encode_event(10.0))
-
-    self.assertEqual(0.0, self.enc.decode_event(0))
-    self.assertEqual(1.0, self.enc.decode_event(1))
-    self.assertEqual(5.0, self.enc.decode_event(2))
+    self.assertEqual(1, self.enc.event_to_num_steps(
+        PerformanceEvent(
+            event_type=PerformanceEvent.TIME_SHIFT, event_value=1)))
+    self.assertEqual(45, self.enc.event_to_num_steps(
+        PerformanceEvent(
+            event_type=PerformanceEvent.TIME_SHIFT, event_value=45)))
+    self.assertEqual(100, self.enc.event_to_num_steps(
+        PerformanceEvent(
+            event_type=PerformanceEvent.TIME_SHIFT, event_value=100)))
 
 
 if __name__ == '__main__':
